@@ -1,26 +1,7 @@
-
-from PIL import Image
-
-def make_background_transparent(image_path):
-    img = Image.open(image_path).convert("RGBA")
-    datas = img.getdata()
-    new_data = []
-    target_rgb = (255, 251, 240)
-    tolerance = 10
-
-    for item in datas:
-        r, g, b, a = item
-        if abs(r - target_rgb[0]) <= tolerance and abs(g - target_rgb[1]) <= tolerance and abs(b - target_rgb[2]) <= tolerance:
-            new_data.append((r, g, b, 0))
-        else:
-            new_data.append(item)
-
-    img.putdata(new_data)
-    output_path = image_path.replace(".png", "_透過.png")
-    img.save(output_path)
-    return output_path
-
-from PyQt6.QtWidgets import QApplication, QLabel, QFileDialog, QWidget
+from PyQt6.QtWidgets import (
+    QApplication, QLabel, QFileDialog, QWidget, QColorDialog,
+    QMenu, QSlider, QVBoxLayout
+)
 from PyQt6.QtGui import QPixmap, QImage, QMouseEvent, QPainter, QPen
 from PyQt6.QtCore import Qt, QPoint
 from PIL import Image
@@ -35,7 +16,6 @@ class TransparentImageViewer(QWidget):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setMouseTracking(True)
 
         self.setGeometry(100, 100, 800, 600)
@@ -43,14 +23,27 @@ class TransparentImageViewer(QWidget):
         self.label = QLabel(self)
         self.label.setStyleSheet("background: transparent;")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+
+        self.slider_label = QLabel("透過範囲: 10", self)
+        self.slider_label.setStyleSheet("color: white; background-color: rgba(0, 0, 0, 80%);")
+        self.slider_label.move(10, 10)
+
+        self.tolerance_slider = QSlider(Qt.Orientation.Horizontal, self)
+        self.tolerance_slider.setGeometry(120, 10, 150, 20)
+        self.tolerance_slider.setMinimum(0)
+        self.tolerance_slider.setMaximum(100)
+        self.tolerance_slider.setValue(10)
+        self.tolerance_slider.valueChanged.connect(self.slider_changed)
 
         self.image_pixmap = None
         self.drag_pos = QPoint()
         self.resizing = False
 
-        self.triangle_size = 40  # 右下三角のサイズ
-        self.header_height = 40  # 上部帯の高さ
+        self.triangle_size = 40
+        self.header_height = 40
+        self.tolerance = 10
+        self.target_rgb = (255, 255, 255)
+        self.current_image_path = None
 
         self.load_image_dialog()
 
@@ -63,16 +56,23 @@ class TransparentImageViewer(QWidget):
             self.close()
 
     def process_and_show(self, path):
+        self.current_image_path = path
         img = Image.open(path).convert("RGBA")
         datas = img.getdata()
         new_data = []
+
         for item in datas:
-            if item[0] > 240 and item[1] > 240 and item[2] > 240:
-                new_data.append((255, 255, 255, 0))
+            r, g, b, a = item
+            if (
+                abs(r - self.target_rgb[0]) <= self.tolerance and
+                abs(g - self.target_rgb[1]) <= self.tolerance and
+                abs(b - self.target_rgb[2]) <= self.tolerance
+            ):
+                new_data.append((r, g, b, 0))
             else:
                 new_data.append(item)
-        img.putdata(new_data)
 
+        img.putdata(new_data)
         qimg = QImage(img.tobytes(), img.width, img.height, QImage.Format.Format_RGBA8888)
         self.image_pixmap = QPixmap.fromImage(qimg)
         self.update_display()
@@ -87,6 +87,8 @@ class TransparentImageViewer(QWidget):
 
     def resizeEvent(self, event):
         self.label.setGeometry(self.rect())
+        self.slider_label.move(10, 10)
+        self.tolerance_slider.setGeometry(120, 10, 150, 20)
         self.update_display()
 
     def mousePressEvent(self, event: QMouseEvent):
@@ -126,10 +128,8 @@ class TransparentImageViewer(QWidget):
         pen.setWidth(2)
         painter.setPen(pen)
 
-        # 外枠
         painter.drawRect(self.rect().adjusted(1, 1, -2, -2))
 
-        # リサイズ三角（右下）
         points = [
             QPoint(self.width(), self.height()),
             QPoint(self.width() - self.triangle_size, self.height()),
@@ -138,12 +138,30 @@ class TransparentImageViewer(QWidget):
         painter.setBrush(Qt.GlobalColor.white)
         painter.drawPolygon(*points)
 
-        # ヘッダー帯
         painter.drawRect(0, 0, self.width(), self.header_height)
+
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        change_color_action = menu.addAction("色を変更する")
+        action = menu.exec(event.globalPos())
+        if action == change_color_action:
+            self.select_color_and_reprocess()
+
+    def select_color_and_reprocess(self):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.target_rgb = (color.red(), color.green(), color.blue())
+            if self.current_image_path:
+                self.process_and_show(self.current_image_path)
+
+    def slider_changed(self, value):
+        self.tolerance = value
+        self.slider_label.setText(f"透過範囲: {value}")
+        if self.current_image_path:
+            self.process_and_show(self.current_image_path)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     viewer = TransparentImageViewer()
     viewer.show()
     sys.exit(app.exec())
-
