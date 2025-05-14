@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import (
     QApplication, QLabel, QFileDialog, QWidget, QColorDialog,
-    QMenu, QSlider, QVBoxLayout
+    QMenu, QSlider
 )
-from PyQt6.QtGui import QPixmap, QImage, QMouseEvent, QPainter, QPen
+from PyQt6.QtGui import QPixmap, QImage, QMouseEvent, QPainter, QPen, QColor
 from PyQt6.QtCore import Qt, QPoint
 from PIL import Image
 import sys
@@ -148,7 +148,7 @@ class TransparentImageViewer(QWidget):
             self.select_color_and_reprocess()
 
     def select_color_and_reprocess(self):
-        color = QColorDialog.getColor()
+        color = QColorDialog.getColor(initial=QColor(*self.target_rgb), parent=self)
         if color.isValid():
             self.target_rgb = (color.red(), color.green(), color.blue())
             if self.current_image_path:
